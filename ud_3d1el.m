@@ -214,11 +214,19 @@ function [DEFL,REACT,ELE_FOR,AFLAG] = ud_3d1el(...
 
 %   You will implement the following three classes:
 %
-%       [your initials]_Analysis
-%       [your initials]_Element
-%       [your initials]_Node
+%       AJCT_Analysis
+%       AJCT_Element
+%       AJCT_Node
 % 
 %   Your code must replace these two lines of code below...
+
+disp(nnodes)
+disp(coord)
+disp(concen)
+disp(fixity)
+disp(nele)
+disp(ends)
+disp(webdir)
 
 DEFL=[]; REACT=[]; ELE_FOR=[];
 AFLAG = inf;
@@ -254,7 +262,7 @@ disp_elements = [-1];
 %             8. Element displacement vector in local coordinates
 %             9. Recovered internal force vector in local coordinates
 %         If set to [], no element data will be displayed.
-disp_element_data = [1 2 3];
+disp_element_data = [1:4]
 
 % Pref 3: Node numbers (row or column vector)
 %         For which nodes should data be displayed? If set to [-1], data will be dislayed for all nodes.
@@ -278,7 +286,7 @@ disp_node_data = [];
 %             6. Pf: vector of concentrated nodal loads at free degrees of freedom
 %             7. Feff: vector of fixed end forces at free degrees of freedom
 %             8. delf: vector of computed displacements at free degrees of freedom
-disp_global_arrays = [];
+disp_global_arrays = [4:5];
 
 % Pref 6: Error vector (true/false)
 %         Display the difference between the back-calculated and original Pf vectors?

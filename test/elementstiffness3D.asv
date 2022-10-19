@@ -1,0 +1,70 @@
+function Ke=elementstiffness3D(Axx, Ayy, Azz, J, Iyy, Izz, L, E, v)
+clc
+clear all
+%% Program Details
+%This function will calculate the element stiffness matrix for a 3D frame
+%member in local coordinates, including shear deformations
+
+%INPUTS
+% Axx = effective shear area along element's local x-x axis
+% Ayy = effective shear area along element's local y-y axis
+% Azz = effective shear area along element's local z-z axis
+% J = torsional constant
+% Iyy = moment of inertia about element's local y-y axis
+% Izz = moment of inertia about element's local z-z axis
+% L = length of the element
+% E = material elastic modulus, Young's Modulus
+% v = material Poisson's ratio
+
+% strong axis bending (Mz-Vy)
+% weak axis bending (My-Vz)
+
+% OUTPUTS:
+% K = 12X12 frame element stiffness matrix in local coordinates
+G=E/(2*(1+v));
+phiY=(12*E*Izz)/(G*Ayy*L^2);
+phiZ=(12*E*Iyy)/(G*Azz*L^2);
+
+Ke = zeros(12);
+Ke(1,1) = E*Axx/L;
+Ke(7,1) = -E*Axx/L;
+Ke(2,2) = (12*E*Izz)/(L^3*(1+phiY));
+Ke(6,2) = (6*E*Izz)/(L^2*(1+phiY));
+Ke(8,2) = -(12*E*Izz)/(L^3*(1+phiY));
+Ke(12,2) = (6*E*Izz)/(L^2*(1+phiY));
+Ke(3,3) = (12*E*Iyy)/(L^3*(1+phiZ));
+Ke(5,3) = -(6*E*Iyy)/(L^2*(1+phiZ));
+Ke(9,3) = -(12*E*Iyy)/(L^3*(1+phiZ));
+Ke(11,3) = -(6*E*Iyy)/(L^2*(1+phiZ));
+Ke(4,4) = G*J/L;
+Ke(10,4) = -G*J/L;
+Ke(3,5) = -(6*E*Iyy)/(L^2*(1+phiZ));
+Ke(5,5) = ((4+phiZ)*E*Iyy)/(L*(1+phiZ));
+Ke(9,5) = (6*E*Iyy)/(L^2*(1+phiZ));
+Ke(11,5) = ((2-phiZ)*E*Iyy)/(L*(1+phiZ));
+Ke(2,6) = (6*E*Izz)/(L^2*(1+phiY));
+Ke(6,6) = ((4+phiY)*E*Izz)/(L*(1+phiY));
+Ke(8,6) = -(6*E*Izz)/(L^2*(1+phiY));
+Ke(12,6) = ((2-phiY)*E*Izz)/(L*(1+phiY));
+Ke(1,7) = -E*Axx/L;
+Ke(7,7) = E*Axx/L;
+Ke(2,8) = -(12*E*Izz)/(L^3*(1+phiY));
+Ke(6,8) = -(6*E*Izz)/(L^2*(1+phiY));
+Ke(8,8) = (12*E*Izz)/(L^3*(1+phiY));
+Ke(12,8) = -(6*E*Izz)/(L^2*(1+phiY));
+Ke(3,9) = -(12*E*Iyy)/(L^3*(1+phiZ));
+Ke(5,9) = (6*E*Iyy)/(L^2*(1+phiZ));
+Ke(9,9) = (12*E*Iyy)/(L^3*(1+phiZ));
+Ke(11,9) = (6*E*Iyy)/(L^2*(1+phiZ));
+Ke(4,10) = -G*J/L;
+Ke(10,10) = G*J/L;
+Ke(3,11) = -(6*E*Iyy)/(L^2*(1+phiZ));
+Ke(11,11) = ((4+phiZ)*E*Iyy)/(L*(1+phiZ));
+Ke(9,11) = (6*E*Iyy)/(L^2*(1+phiZ));
+Ke(5,11) = ((2-phiZ)*E*Iyy)/(L*(1+phiZ));
+Ke(2,12) = (6*E*Izz)/(L^2*(1+phiY));
+Ke(12,12) = ((4+phiY)*E*Izz)/(L*(1+phiY));
+Ke(8,12) = -(6*E*Izz)/(L^2*(1+phiY));
+Ke(6,12) = ((2-phiY)*E*Izz)/(L*(1+phiY));
+
+end
