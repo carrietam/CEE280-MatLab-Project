@@ -219,14 +219,9 @@ function [DEFL,REACT,ELE_FOR,AFLAG] = ud_3d1el(...
 %       AJCT_Node
 % 
 %   Your code must replace these two lines of code below...
-
-disp(nnodes)
-disp(coord)
-disp(concen)
-disp(fixity)
-disp(nele)
-disp(ends)
-disp(webdir)
+% 
+Analyze = AJCT_Analysis(nnodes, coord, fixity, concen, nele, ends, A, Ayy, Azz, Iyy, Izz, J, E, v, webdir, w, truss);
+Analyze.RunAnalysis()
 
 DEFL=[]; REACT=[]; ELE_FOR=[];
 AFLAG = inf;
@@ -267,14 +262,14 @@ disp_element_data = [1:4]
 % Pref 3: Node numbers (row or column vector)
 %         For which nodes should data be displayed? If set to [-1], data will be dislayed for all nodes.
 %         If set to [], data will be not be displayed for any nodes.
-disp_nodes = [];
+disp_nodes = [-1];
 
 % Pref 4: Node data (row or column vector)
 %         Which data should be displayed for the selected nodes from pref 4? Options:
 %             1. Deflections
 %             2. Reactions
 %         If set to [], no nodal data will be displayed.
-disp_node_data = [];
+disp_node_data = [1,2];
 
 % Pref 5: Global arrays (row or column vector)
 %         Which global arrays should be displayed? Options:
@@ -294,15 +289,15 @@ disp_error = false;
 
 % % Diagnostic tools: Code
 % 
-% % Instantiate an object of the Analysis class
+% Instantiate an object of the Analysis class
 % analysis = RC_Analysis(nnodes, coord, fixity, concen, nele, ends, A, Ayy, Azz, Iyy, Izz, J, E, v, ...
 %         webdir, w, truss);
-% 
-% % Run the 1st order analysis
+
+% Run the 1st order analysis
 % analysis.RunAnalysis(disp_elements, disp_element_data, disp_nodes, disp_node_data, disp_global_arrays, ...
 %         disp_error);
-% 
-% % Extract the matrices to be returned to Mastan2
+
+% Extract the matrices to be returned to Mastan2
 % [DEFL, REACT, ELE_FOR, AFLAG] = analysis.GetMastan2Returns();
 
 end

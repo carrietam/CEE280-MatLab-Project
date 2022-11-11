@@ -7,8 +7,10 @@ classdef AJCT_Element < handle
         Ayy % Shear Area in y axis
         Azz % Shear Area in z axis
         d % Vector containing distance between Nodes
+        DOF % Degrees of freedom for element i
         E % Modulus of Elasticity
         element_nodes % vector of 2 Node objects
+        FEF_G % Global element fixed end force vector
         gam % Small gamma matrix
         gamt % Small gamma transpose matrix
         GAM % Big gamma matrix
@@ -16,16 +18,19 @@ classdef AJCT_Element < handle
         Iyy % Moment of inertia in the y axis
         Izz % Moment of inertia in the z axis
         J % Torsional constant
+        Keg % Global element stiffness matrix
         L % Length
         v % Poisson's ratio
         webdir % Unit web vector for element i
+        w % 3x1 vector of uniform loads in 3 coord. dir.s
+
     end
     
     % Public methods go here
     methods (Access = public)
         %% Constructor
         % Pass element properties to object
-        function self = AJCT_Element(A, Ayy, Azz, E, element_nodes, Izz, Iyy, J, v, webdir)
+        function self = AJCT_Element(A, Ayy, Azz, E, element_nodes, Izz, Iyy, J, v, webdir, w)
 
             % Initialize given properties
             self.A = A;
@@ -38,11 +43,29 @@ classdef AJCT_Element < handle
             self.J = J;
             self.v = v;
             self.webdir = webdir;
+            self.w = w;
 
             % Compute any other necessary properties
             self.ComputeLength(); % Length
             self.ComputeTransformationMatrix(); % Gamma Matrix
             self.ComputeElasticStiffnessMatrix(); % Stiffness Matrix
+            self.RetrieveDOF(); % Degrees of Freedom
+            self.ComputeFixedEndForces(); % Fixed End Forces
+        end
+        
+        %% Make degrees of freedom public
+        function eDOF = GetDOF(self)
+            eDOF = self.DOF;
+        end
+        
+        %% Make global stiffness matrix public
+        function Kglo = GetKGloEleMatrix(self)
+            Kglo = self.Keg;
+        end
+        
+        %% Make global fixed end force vector public
+        function fefg = GetFEF(self)
+            fefg = self.FEF_G;
         end
     end
     
@@ -60,6 +83,7 @@ classdef AJCT_Element < handle
 
             % Calculate length of object
             d = ncoord2 - ncoord1; % calc distance between nodes
+            d = d';
             self.d = d;
             length = sqrt((d(1,1))^2+(d(2,1))^2+(d(3,1))^2); % 3D distance formula
             self.L = length; % assign length property to object
@@ -70,18 +94,15 @@ classdef AJCT_Element < handle
             % Create small gamma matrix with placeholder 0's
             gam = zeros(3,3);
 
-            % Calculate length of object
-            self.ComputeLength();
-
             % Calculate actual small gamma matrix values
-            norm = self.d/self.L; % Normalize vector containing distance btwn nodes
-            gam(1,:) = transpose(norm); % Set first row of small gamma to...
+            nor = self.d/self.L; % Normalize vector containing distance btwn nodes
+            gam(1,:) = transpose(nor); % Set first row of small gamma to...
             % normalized distance vector
-            gam(3,:) = cross(gam(1,:),[0,1,0]); % Set third row of small...
+            gam(2,:) = self.webdir; % Set second row of small...
+            % gamma to cross product of third and first row
+            gam(3,:) = (cross(gam(1,:),gam(2,:))); % Set third row of small...
             % gamma to cross product of normalized distance vector & unit 
             % y-axis vector
-            gam(2,:) = cross(gam(3,:),gam(1,:)); % Set second row of small...
-            % gamma to cross product of third and first row
             self.gam = gam;
 
             % Create small gamma transpose matrix
@@ -91,13 +112,11 @@ classdef AJCT_Element < handle
             % Create big gamma matrix
             blanks = zeros(size(gam)); % Create matrix of zeros the size...
             % of small gamma matrix
-            GAM = [gam,blanks,blanks,blanks;blanks,gam,blanks,blanks;...
-                blanks,blanks,gam,blanks;blanks,blanks,blanks,gam];
+            GAM = blkdiag(gam,gam,gam,gam);
             self.GAM = GAM;
 
             % Create big gamma transpose matrix
-            GAMT = [gamt,blanks,blanks,blanks;blanks,gamt,blanks,blanks;...
-                blanks,blanks,gamt,blanks;blanks,blanks,blanks,gamt];
+            GAMT = blkdiag(gamt,gamt,gamt,gamt);
             self.GAMT = GAMT;
         end
         
@@ -154,6 +173,7 @@ classdef AJCT_Element < handle
             % Convert local stiffness matrix to global stiffness matrix
             self.ComputeTransformationMatrix();
             Keg = self.GAMT*Ke*self.GAM;
+            self.Keg = Keg;
 
             % Output length results
             output_l = ['The length of the element is: ',num2str(self.L)];
@@ -174,6 +194,52 @@ classdef AJCT_Element < handle
             disp(Ke)
             disp(output_K)
             disp(Keg)
+        end
+        
+        %% Retrieve the degrees of freedom associated with the element nodes
+        function RetrieveDOF(self)
+            % Pass two Node objects to function
+            node1 = self.element_nodes(1,1);
+            node2 = self.element_nodes(2,1);
+            
+            % Get degrees of freedom of nodes
+            dof = [GetNodeDOF(node1);GetNodeDOF(node2)];
+            self.DOF = dof;
+        end
+        
+        %% Compute fixed end forces of the element
+        function ComputeFixedEndForces(self)
+            % Pull in any necessary properties
+            L = self.L;
+            GAMT = self.GAMT;
+            
+            % Pull uniform loads in each of the coordinate directions...
+            % from w vector
+            self.w = self.w'
+            wx = self.w(1,1);
+            wy = self.w(2,1);
+            wz = self.w(3,1);
+            
+            % Compute FEF / FEM in local coordinates
+            FEF_LOC = zeros(12,1);
+            
+            FEF_LOC(1,1) = wy*L/2;
+            FEF_LOC(2,1) = wx*L/2; % axial?
+            FEF_LOC(3,1) = wz*L/2;
+            FEF_LOC(4,1) = wz*L^2/12;
+            FEF_LOC(5,1) = 0; % no moment?
+            FEF_LOC(6,1) = wy*L/2;
+            FEF_LOC(7,1) = wy*L^2/12;
+            FEF_LOC(8,1) = wx*L/2; % axial?
+            FEF_LOC(9,1) = wz*L/2;
+            FEF_LOC(10,1) = wz*L^2/12;
+            FEF_LOC(11,1) = 0; % no moment?
+            FEF_LOC(12,1) = wy*L^2/12;
+                            
+            % Compute FEF / FEM in global coordinates
+            FEF_G = GAMT*FEF_LOC;
+            self.FEF_G = FEF_G;
+                
         end
     end
 end
