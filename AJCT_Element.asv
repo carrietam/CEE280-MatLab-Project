@@ -149,11 +149,50 @@ classdef AJCT_Element < handle
             % Create local torsional stiffness matrix
             k_mat_torsion = k_torsion*[1,-1;-1,1];
 
-            % Map local submatrices to local element stiffness matrix
-            Ke_loc([1,7],[1,7]) = k_mat_axial;
-            Ke_loc([2,6,8,12],[2,6,8,12]) = k_mat_flexz;
-            Ke_loc([3,5,9,11],[3,5,9,11]) = k_mat_flexy;
-            Ke_loc([4,10],[4,10]) = k_mat_torsion;
+            % Map local submatrices to local 
+            Ke_loc([1 7],[1 7]) = k_mat_axial;
+
+            % Create stiffness matrix
+            Ke_loc(1,1) = k1;
+            Ke_loc(7,1) = -k1;
+            Ke_loc(2,2) = k2;
+            Ke_loc(6,2) = k3;
+            Ke_loc(8,2) = -k2;
+            Ke_loc(12,2) = k3;
+            Ke_loc(3,3) = k7;
+            Ke_loc(5,3) = -k3;
+            Ke_loc(9,3) = -k7;
+            Ke_loc(11,3) = -k3;
+            Ke_loc(4,4) = k4;
+            Ke_loc(10,4) = -k4;
+            Ke_loc(3,5) = -k3;
+            Ke_loc(5,5) = k5;
+            Ke_loc(9,5) = k3;
+            Ke_loc(11,5) = k6;
+            Ke_loc(2,6) = k3;
+            Ke_loc(6,6) = k5;
+            Ke_loc(8,6) = -k3;
+            Ke_loc(12,6) = k6;
+            Ke_loc(1,7) = -k1;
+            Ke_loc(7,7) = k1;
+            Ke_loc(2,8) = -k2;
+            Ke_loc(6,8) = -k3;
+            Ke_loc(8,8) =  k2;
+            Ke_loc(12,8) = -k3;
+            Ke_loc(3,9) = -k2;
+            Ke_loc(5,9) = k3;
+            Ke_loc(9,9) = k2;
+            Ke_loc(11,9) = k3;
+            Ke_loc(4,10) = -k4;
+            Ke_loc(10,10) = k4;
+            Ke_loc(3,11) = -k3;
+            Ke_loc(11,11) = k5;
+            Ke_loc(9,11) = k3;
+            Ke_loc(5,11) = k6;
+            Ke_loc(2,12) = k3;
+            Ke_loc(12,12) = k5;
+            Ke_loc(8,12) = -k3;
+            Ke_loc(6,12) = k6;
 
             disp('this is K_loc')
             disp(Ke_loc)

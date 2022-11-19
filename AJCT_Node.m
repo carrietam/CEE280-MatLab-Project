@@ -3,19 +3,17 @@ classdef AJCT_Node < handle
     
     % Private properties go here
     properties (Access = private)
-        node_coord % 3x1 vector containing the x, y, and z coordinates of the node
-        node_num % assigned node number from mastan
+        node_coord % 1x3 vector containing the x, y, and z coordinates of the node
         node_dof % degrees of freedom for the node
     end
     
     % Public methods go here
     methods (Access = public)
         %% Constructor
-        %  node_coord:  3x1 vector containing the x, y, and z coordinates of the node
+        %  node_coord:  1x3 vector containing the x, y, and z coordinates of the node
         function self = AJCT_Node(node_coord, node_num)
             self.node_coord = node_coord;
-            self.node_num = node_num;
-            self.assignDOF();
+            self.assignDOF(node_num);
         end
         
         %% Get Node Coordinates
@@ -34,11 +32,9 @@ classdef AJCT_Node < handle
     methods (Access = private)
         %% Assign degrees of freedom for each node
         % Returns degrees of freedom
-        function assignDOF(self)
-            for i=1:6
-                df(i,1) = [(self.node_num-1)*6+i];
-                self.node_dof = df;
-            end
+        function assignDOF(self,node_num)
+               p = (node_num-1)*6;
+               self.node_dof= (1:6)'+ [p;p;p;p;p;p];
         end
     end
 end

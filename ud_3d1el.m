@@ -281,7 +281,7 @@ disp_node_data = [1,2];
 %             6. Pf: vector of concentrated nodal loads at free degrees of freedom
 %             7. Feff: vector of fixed end forces at free degrees of freedom
 %             8. delf: vector of computed displacements at free degrees of freedom
-disp_global_arrays = [4:5];
+disp_global_arrays = [4,5];
 
 % Pref 6: Error vector (true/false)
 %         Display the difference between the back-calculated and original Pf vectors?
