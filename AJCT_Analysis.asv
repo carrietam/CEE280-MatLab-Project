@@ -5,48 +5,69 @@ classdef AJCT_Analysis < handle
     properties (Access = private)
         all_ele
         all_nodes
-        
-        % Note that properties under this comment can probably be
-        % eliminated, but code needs to be modified to do this
-        nnodes
-        coord
-        concen
-        nele
-        freeDOF
-        suppDOF
-        psDOF
-        K_g
-        KFF
-        KFN
-        KFS
-        PF
-        PS
-        PP
+
+        % Mastan returns
+        MA_return_DEFL
+        MA_return_REACT
+        MA_return_AFLAG
+        MA_return_ELE_FOR
     end
 
     % Public methods go here
     methods (Access = public)
         %% Constructor
-        function self = AJCT_Analysis(nnodes, coord, fixity, concen, nele, ends, A, Ayy, Azz, Iyy, Izz, J, E, v, webdir, w, truss)
-            self.nnodes = nnodes;
-            self.coord = coord;
-            self.concen = concen;
-            self.nele = nele;
-            self.CreateNodes(nnodes,coord);
-            self.CreateElements(A, Ayy, Azz, E, ends, Izz, Iyy, J, nele, v, webdir, w);
-            self.ClassifyDOF(fixity);
+        function self = AJCT_Analysis(nnodes, coord, nele, ends, A, Ayy,...
+                Azz, Iyy, Izz, J, E, v, webdir, w)
+            % Create nodes and elements
+            CreateNodes(self,nnodes,coord);
+            CreateElements(self,A, Ayy, Azz, E, ends, Izz, Iyy, J, nele,...
+                v, webdir, w);
         end
         
         %% Run the analysis
-        function RunAnalysis(self)
-            self.CreateStiffnessMatrix();
-            self.ComputeStiffnessSubMatrices();
-            self.CheckKffMatrix();
-            self.CreateLoadVectors();
-            self.ComputeDisplacementReactions();
+        function RunAnalysis(self,fixity, nnodes, nele, concen)
+            % Call private methods below to return necessary outputs
+            K_g = CreateStiffnessMatrix(self,nnodes,nele);
+            [freeDOF, suppDOF, psDOF] = ClassifyDOF(self, fixity);
+
+            %% WE DONT NEED ALL OF THESE, CAN JUST GET THE ONES WE WANT
+            [KFF, KFN, KNF, KNN, KSF, KSN]= ...
+            ComputeStiffnessSubMatrices(self, freeDOF, suppDOF, psDOF, K_g);
+
+            % Check condition number to see if structure is stable
+            CheckKffMatrix(self,KFF);
+
+            % If structure is stable, create load vectors, compute
+            % displacements and reactions, recover element forces, and
+            % compute the error.
+            if self.MA_return_AFLAG == 1
+                [PS, PF, PP, FEF_s, FEF_p] = CreateLoadVectors(self,...
+                    freeDOF, suppDOF,psDOF, nnodes, nele, concen);
+                ComputeDisplacementReactions(self, PS, PF, PP, freeDOF,...
+                    suppDOF,psDOF, fixity, KFF,KFN,KNF, KNN, KSF,KSN,...
+                    nnodes, FEF_s, FEF_p);
+                RecoverElementForces(self, nele);
+                ComputeError(self, KFF, KFN, freeDOF, psDOF, PF,FEF_s);
+
+            % If structure is unstable, let the user know and return
+            % vectors of 0's for deflections, reactions, and forces.
+            else
+                disp('Unstable Structure. Unsuccessful Analysis')
+                self.MA_return_DEFL = zeros(nnodes,6); 
+                self.MA_return_REACT = zeros(nnodes, 6); 
+                self.MA_return_ELE_FOR = zeros(nele,12);
+            end
+        end
+
+        %% Get Mastan2 returns for use in post processing
+        function [DEFL, REACT, AFLAG, ELE_FOR] = GetMastan2Returns(self)
+            DEFL = self.MA_return_DEFL;
+            REACT = self.MA_return_REACT;
+            AFLAG = self.MA_return_AFLAG;
+            ELE_FOR = self.MA_return_ELE_FOR;
         end
     end
-    
+
     % Private methods go here
     methods (Access = private)
         %% Create Nodes
@@ -56,264 +77,271 @@ classdef AJCT_Analysis < handle
             % Loop over number of nodes
             for i = 1:nnodes
                 % Create node & add to all_nodes vector
-                node_i = AJCT_Node(coord(i,1:3),i);
-                self.all_nodes(i) = node_i;
+                self.all_nodes(i) = AJCT_Node(coord(i,1:3),i);
             end
-
         end
         
         %% Create Elements
         % Create a vector of element objects, size nele
-        function CreateElements(self,A, Ayy, Azz, E, ends, Izz, Iyy, J, nele, v, webdir, w)
+        function CreateElements(self,A, Ayy, Azz, E, ends, Izz, Iyy, J,...
+                nele, v, webdir, w)
             self.all_ele = AJCT_Element.empty;
             % Loop over number of elements
             for i = 1:nele
                 % Create element & add to all_ele vector
-                element_i = AJCT_Element(A(i), Ayy(i), Azz(i), E(i),...
+                self.all_ele(i) = AJCT_Element(A(i), Ayy(i), Azz(i), E(i),...
                     [self.all_nodes(ends(i,1)); self.all_nodes(ends(i,2))], Izz(i), Iyy(i), J(i), v(i),...
-                    webdir(i), w(i,1:3));
-                self.all_ele(i) = element_i;
+                    webdir(i,1:3), w(i,1:3));
             end
         end
         
         %% Create Stiffness Matrix
         % Assemble system stiffness matrix
-        function CreateStiffnessMatrix(self)
-            nDOF = self.nnodes*6; % Calculate the number of degrees of freedom
+        function K_g = CreateStiffnessMatrix(self,nnodes,nele)
+            % Calculate the number of degrees of freedom
+            nDOF = nnodes*6; 
 
-            for i = 1:self.nele
-                % Get necessary element properties
-                disp('this is i')
-                disp(i)
-                disp('this is self ele')
-                disp(self.all_ele)
-                ele_dof = self.all_ele(i).GetDOF() % relevant DOFs
-                K_ele = self.all_ele(i).GetKGloEleMatrix() % global element...
+            % Initialize a sparse global matrix the size of the number of
+            % degrees of freedom
+            K_g = sparse(nDOF, nDOF)
+
+            % Loop over elements to map element stiffness matrices into
+            % global matrix using the assigned degrees of freedom
+            for i=1:nele
+                % Find relevant degrees of freedom
+                ele_dof = self.all_ele(i).GetDOF();
+
+                % Find global element stiffness matrix
+                K_ele = self.all_ele(i).GetKGloEleMatrix();
+
+                % Map out global element stiffness matrix to global system
                 % stiffness matrix
-                
-                % Create necessary vectors to use sparse fnct
-                % e1 repeats ele_dof over and over (e.g. 
-                % [1,2,3,1,2,3,1,2,3...])
-                e1 = ele_dof;
-                for j = 1:length(ele_dof)-1
-                    e1 = [e1,ele_dof];
-                end
-                
-                % e2 repeats every element in ele_dof (e.g.
-                % [1,1,1,2,2,2,3,3,3...])
-                e2 = repelem(ele_dof,length(ele_dof));
-                
-                % Convert element global matrix as row vector
-                K_ele = reshape(K_ele,1,[]);
-                
-                % Create mapped element stiffness matrix using sparse fnct
-                K_mapped = sparse(e1,e2,K_ele,nDOF,nDOF)
-                
-                % Add mapped element matrix to existing global system matrix
-                % Try to add to system matrix. If system matrix has not
-                % been made yet, system matrix = 1st element matrix
-                try
-                    K_g = K_g + K_mapped;
-                catch
-                    K_g = K_mapped;
-                end
+                K_g(ele_dof, ele_dof) = K_g(ele_dof, ele_dof) + K_ele;
             end
-%             disp('This is the global stiffness matrix:')
-%             disp(K_g)
-            self.K_g = K_g;
         end
         
-        %% Create load vectors
-        function CreateLoadVectors(self)
-           nDOF = self.nnodes*6; % Calculate the number of degrees of freedom
-           concen_g = zeros(nDOF,1); % Initialize concen_g
+        %% Create Load Vectors
+        function [PS, PF, PP, FEF_f, FEF_p, FEF_s] = ...
+        CreateLoadVectors(self, freeDOF, suppDOF,psDOF, nnodes, nele, concen)
+            % Calculate the number of degrees of freedom & initialize the
+            % global concentrated load & system FEF vectors
+            nDOF = nnodes*6;
+            concen_g = zeros(nDOF,1);
+            FEF_sys = zeros(nDOF,1);
            
-           %% Create concentrated load vectors
-           for i = 1:self.nnodes
-               % Get necessary element properties
-               node_DOF = self.all_nodes(i).GetNodeDOF();
-                
-               % Map out element concen vector onto global concen vector
-               concen_g(node_DOF,1) = [self.concen(i,1:6)]';
-               % need a line to continuously add these
-           end
+            %% Create concentrated load vectors
+            for i = 1:nnodes
+                % Get necessary element properties
+                node_DOF = self.all_nodes(i).GetNodeDOF();
+                % Map out element concen vector onto global concen vector
+                concen_g(node_DOF,1) = [concen(i,1:6)]';
+            end
            
-           %% Classify concentrated load vectors
-           % Initialize classified concen vectors
-           concen_f = zeros(length(self.freeDOF),1); % free DOFs
-           concen_s = zeros(length(self.suppDOF),1); % support DOFs
-           concen_p = zeros(length(self.psDOF),1); % prescribed DOFs
+            %% Classify concentrated load vectors
+            % Create concentrated load vectors for classified DOFs
+            % If there are DOFs of the classification type (i.e. the vector
+            % containing the DOFs of a certain classification is not empty,
+            % pull out the corresponding concentrated loads for that DOF.
 
-           % Create concentrated load vector for free DOFs
-           nfdof = length(self.freeDOF);
-           for i = 1:nfdof
-               concen_f(i,1) = [concen_g(self.freeDOF(i))];
-           end
+            if isempty(freeDOF) ~= 1
+                concen_f = concen_g(freeDOF); % free DOFs
+            end
 
-           % Create concentrated load vector for support DOFs
-           nsdof = length(self.suppDOF);
-           for i = 1:nsdof
-               concen_s(i,1) = [concen_g(self.suppDOF(i))];
-           end
+            if isempty(suppDOF) ~= 1
+                concen_s = concen_g(suppDOF); % support DOFs
+            end
 
-           % Create concentrated load vector for prescribed DOFs
-           npdof = length(self.psDOF);
-           for i = 1:npdof
-               concen_p(i,1) = [concen_g(self.psDOF(i))];
-           end
+            if isempty(psDOF) ~= 1
+                concen_p = concen_g(psDOF); % prescribed DOFs
+            end          
 
-           %% Create fixed end force vector
-           nDOF = self.nnodes*6; % Calculate the number of degrees of freedom
-           FEF_sys = zeros(nDOF,1); % Blank vector of FEF
-           
-           % Loop over number of elements
-           for j = 1:self.nele
-               % Get necessary element properties
-               ele_dof = self.all_ele(j).GetDOF(); % relevant DOFs
-               ele_FEF = self.all_ele(j).GetFEF(); % global FEF vector
+            %% Create fixed end force vector
+            % Loop over number of elements
+            for j = 1:nele
+                % Get necessary element properties
+                ele_dof = self.all_ele(j).GetDOF(); % relevant DOFs
+                ele_FEF = self.all_ele(j).GetFEF(); % global FEF vector
                
-               % Loop over element degrees of freedom
-               for k = 1:length(ele_dof)
-                   dof = ele_dof(k); % Find current relevant DOF
-                   
-                   % Map out element FEF vector
-                   FEF_sys(dof) = FEF_sys(dof)+ele_FEF(k);
-               end
-           end
+                % Assemble system FEF vector from element FEF vectors
+                FEF_sys(ele_dof) = FEF_sys(ele_dof)+ele_FEF;
+            end
 
-           %% Classify fixed end force vectors
-           % Initialize classified concen vectors
-           FEF_f = zeros(length(self.freeDOF),1); % free DOFs
-           FEF_s = zeros(length(self.suppDOF),1); % support DOFs
-           FEF_p = zeros(length(self.psDOF),1); % prescribed DOFs
+            %% Classify fixed end force vectors
+            % Create fixed end force load vectors for classified DOFs
+            % If there are DOFs of the classification type (i.e. the vector
+            % containing the DOFs of a certain classification is not empty,
+            % pull out the corresponding FEF loads for that DOF.
+ 
+            if isempty(freeDOF) ~= 1
+                FEF_f = FEF_sys(freeDOF); % free DOFs
+                disp(FEF_f)
+            end
 
-           % Loop over free element degrees of freedom
-           for i = 1:nfdof
-               FEF_f(i,1) = [FEF_sys(self.freeDOF(i))];
-           end
+            if isempty(suppDOF) ~= 1
+                FEF_s = FEF_sys(suppDOF); % support DOFs
+            end
 
-           % Loop over support element degrees of freedom
-           for i = 1:nsdof
-               FEF_s(i,1) = [FEF_sys(self.suppDOF(i))];
-           end
+            if isempty(psDOF) ~= 1
+                FEF_p = FEF_sys(psDOF); % prescribed DOFs
+                disp(FEF_p)
+            end
+ 
+            %% Calculate total force vectors based on classified DOFs
+            PF = concen_f - FEF_f; % free DOFs
+            PS = concen_s - FEF_s; % support DOFs
 
-           % Loop over prescribed element degrees of freedom
-           for i = 1:npdof
-               FEF_p(i,1) = [FEF_sys(self.psDOF(i))];
-           end
+            FEF_p = FEF_sys(psDOF);
 
-           %% Find total force vectors based on classified DOFs
-           self.PF = concen_f + FEF_f; % free DOFs
-           self.PS = concen_s + FEF_s; % support DOFs
-           self.PP = concen_p + FEF_p; % prescribed DOFs
-
-           %% Display results
-%            disp('This is the concentrated load vector:')
-%            disp(concen_g)
-%            disp('This is the global fixed end force vector:')
-%            disp(FEF_sys)
-%            disp(size(FEF_sys))
-% 
-%            disp('This is the free fixed end force vector:')
-%            disp(FEF_f)
-%            disp(size(FEF_f))
-% 
-%            disp('This is the support fixed end force vector:')
-%            disp(FEF_s)
-%            disp(size(FEF_s))
-% 
-%            disp('This is the prescribed fixed end force vector:')
-%            disp(FEF_p)
-%            disp(size(FEF_p))
+            try
+                PP = concen_p - FEF_p; % prescribed DOFs
+            catch
+                PP = -(FEF_p);
+            end
         end
 
         %% Classify Degrees of Freedom
-        function ClassifyDOF(self, fixity)
-            % Transform the fixity matrix so that different columns 
+        function [freeDOF, suppDOF, psDOF] = ClassifyDOF(self, fixity)
+            % Transform the fixity matrix so that different columns
             % correspond to different nodes
             fix_t = fixity';
 
             % Classify DOFs as free, supports, or prescribed
-            self.freeDOF = find(isnan(fix_t)); % Free DOFs
-            self.suppDOF = find(fix_t == 0); % Support DOFs
-            self.psDOF = find(fix_t ~=0 & ~isnan(fix_t)); % Prescribed DOFs
+            freeDOF = find(isnan(fix_t)); % Free DOFs
+            suppDOF = find(fix_t == 0); % Support DOFs
+            psDOF = find(fix_t ~=0 & ~isnan(fix_t)); % Prescribed DOFs
         end
 
         %% Compute Stiffness Submatrices
-        function ComputeStiffnessSubMatrices(self)
-            % Retrieve necessary classifications of degrees of freedom
-            freeDOF = self.freeDOF;
-            suppDOF = self.suppDOF;
-            psDOF = self.psDOF;
-
+        function [KFF,KFN,KNF, KNN, KSF,KSN] = ...
+                ComputeStiffnessSubMatrices(self, freeDOF, suppDOF, psDOF, K_g)
             % Create submatrices from global K matrix
-            self.KFF = self.K_g(freeDOF,freeDOF);
-            self.KFS = self.K_g(suppDOF,suppDOF);
-            self.KFN = self.K_g(psDOF,psDOF);
+            KFF = K_g(freeDOF,freeDOF);
+            KFN = K_g(freeDOF,psDOF);
+            KNF = K_g(psDOF,freeDOF);
+            KNN = K_g(psDOF,psDOF);
+            KSF = K_g(suppDOF,freeDOF);
+            KSN = K_g(suppDOF,psDOF);
         end
 
         %% Check KFF Matrix to see if structure is stably supported
-        function CheckKffMatrix(self)
+        function CheckKffMatrix(self,KFF)
             % Calculate and display condition number
-            cond_kff = condest(self.KFF);
+            cond_kff = condest(KFF);
             disp('The condition number for the KFF matrix is:')
             disp(cond_kff)
 
             % Display the number of sig figs that are to be lost
-            lost_sigfigs = log10(cond_kff);
+            lost_sigfigs = abs(log10(cond_kff));
             disp('The estimated number of significant figures to be lost is:')
             disp(lost_sigfigs)
 
-            if log10(cond_kff)<10^12
-                AFLAG = 1;
+            % Set AFLAG to be 1 or 0 corresponding to whether or not the
+            % structure is stable
+            if lost_sigfigs >4
+                self.MA_return_AFLAG = 1; % stable
             else
-                AFLAG = 0;
-                disp('Unstable Structure. Unsuccessful Analysis')
-                quit
+                self.MA_return_AFLAG = 0; % unstable
             end
         end
 
         %% Compute global displacements & reactions at each DOF
-        function ComputeDisplacementReactions(self)
-            % Compute displacements at free degrees of freedom
-            nDOF = self.nnodes*6;
-            DN = zeros(length(self.psDOF));
+        function [DN, DF, fix_t] = ComputeDisplacementReactions(self, PS,...
+                PF, PP, freeDOF, suppDOF,psDOF, fixity,...
+                KFF,KFN,KNF, KNN, KSF,KSN, nnodes, FEF_s, FEF_p)
+            %% Compute displacements
+            % Transform the fixity matrix so that different columns 
+            % correspond to different nodes
+            fix_t = fixity';
 
+            % Find prescribed displacements
+            DN = fix_t(psDOF);
+
+            % Compute displacements at free degrees of freedom
+            % If there are prescribed displacements on any degrees of
+            % freedom, account for them. Otherwise, do not.
             try
-                DF = self.KFF\(self.PF-self.KFN*DN);
+                DF = KFF\(PF-KFN*DN);
             catch
-%                 disp('KFF');
-%                 disp(self.KFF);
-%                 disp(size(self.KFF));
-%                 disp(full(self.KFF));
-%                 disp('PF');
-%                 disp(self.PF);
-%                 disp(size(self.PF));
-                DF = self.KFF\self.PF;
+                DF = KFF\PF;
             end
 
             % Initalize global displacement vector
+            nDOF = nnodes*6; % find number of degrees of freedom
             disp_glo_vector = zeros(nDOF,1);
             
-            % Loop over free degrees of freedom and put them in a global
+            % Insert classified displacement vectors into global
             % displacement vector
-            for i = 1:length(self.freeDOF)
-                % Create a vector of displacements
-                disp_glo_vector(self.freeDOF(i)) = DF(i);
-            end
-
-            % Loop over prescribed degrees of freedom and put them in the
-            % global displacement vector
-            for i = 1:length(self.psDOF)
-                disp_glo_vector(self.psDOF(i)) = DN(i);
-            end
+            disp_glo_vector(freeDOF) = DF; % free DOFs
+            disp_glo_vector(psDOF) = DN; % prescribed DOFs
 
             % Format displacement vector to be outputted back to MASTAN2
-            DEFL = reshape(disp_glo_vector,self.nnodes,6);
+            self.MA_return_DEFL = reshape(disp_glo_vector,6,nnodes)';
 
-%             REACT(i,1:6)
+            %% Compute reactions
+            % Calculate vectors of reactions based on classified DOF's
+            RS = KSF*DF+KSN*DN-PS; % reactions at supports
+            RN = KNF*DF+KNN*DN-PP; % reactions @ locations w prescribed
+            % displacements
+            
+            % Map classified vectors back to a global vector of reactions
+            % based on assigned DOF's. Note reactions at free DOF's are 0
+            % because there are no reactions there.
+            react_glo_vector(freeDOF) = 0; 
+            react_glo_vector(suppDOF) = RS; 
+            react_glo_vector(psDOF) = RN;
+            
+
+            % Format reaction vector to be outputted back to MASTAN2
+            self.MA_return_REACT = reshape(react_glo_vector,6, nnodes)';
         end
 
-        %% 
+        function RecoverElementForces(self, nele)
+            % loops over all elements, computes local element force
+            % vectors, and returns to MASTAN
+            % makes matrix of element forces for all elements
+
+            % Initialize element force matrix to be returned to Mastan
+            self.MA_return_ELE_FOR = zeros(nele,12);
+
+            % Store global deflections vector
+            dg = self.MA_return_DEFL.';
+
+            % Loop over number of elements & assemble system recovered 
+            % force vector using element recovered force vectors. Call the
+            % ComputeForces method from the element class.
+            for i=1:nele
+                % Find relevant DOF's
+                el_DOF = self.all_ele(i).GetDOF();
+    
+                % Format reaction vector to be outputted back to MASTAN2
+                self.MA_return_ELE_FOR(i,:) = ...
+                    self.all_ele(i).ComputeForces(dg(el_DOF)); 
+            end
+        end
+        
+        %% Compute Error
+        function ComputeError(self, KFF, KFN, freeDOF, psDOF, PF,FEF_s)
+            % back-calculates the load vector using the computed 
+            % displacements, and computes the error with respect to the applied load vector.
+
+            % back calculation of load vector 
+            % retrieves global deflections being returned to MASTAN
+
+            % Store global deflections vector
+            dg = self.MA_return_DEFL'; 
+            % return_DEFL' is a (nnodes, 6)
+            
+            full_d = dg(:); % takes each value and makes it into one column vector of all deflections
+            % full_d is (nnodes*6,1)
+            PF_check = KFF*full_d(freeDOF)+KFN*full_d(psDOF);
+            % KFF*free displacements + KFN*known displacements + fixed end
+            % forces at supports = back calculated forces generated by our
+            % displacements
+
+            % PF is applied load vector
+            error = PF - PF_check; % finds error between MASTAN's forces and ours
+            disp('Error:')
+            disp(error)
+        end
     end
 end

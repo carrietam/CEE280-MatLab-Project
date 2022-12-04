@@ -2,6 +2,8 @@ function [DEFL,REACT,ELE_FOR,AFLAG] = ud_3d1el(...
 		nnodes,coord,concen,fixity,nele,ends,A,Izz,Iyy,J,Cw,IsSym,...
         Ysc,Zsc,Betay,Betaz,Betaw,Zzz,Zyy,Ayy,Azz,...
 		E,v,Fy,YldSurf,Wt,webdir,beta_ang,w,thermal,truss,anatype);
+clc
+tic
 
 % Function input modified on 10-4-2022 by NR to reflect the new input given
 % by updated software capabilities.
@@ -218,13 +220,12 @@ function [DEFL,REACT,ELE_FOR,AFLAG] = ud_3d1el(...
 %       AJCT_Element
 %       AJCT_Node
 % 
-%   Your code must replace these two lines of code below...
+% %   Your code must replace these two lines of code below...
 % 
-Analyze = AJCT_Analysis(nnodes, coord, fixity, concen, nele, ends, A, Ayy, Azz, Iyy, Izz, J, E, v, webdir, w, truss);
-Analyze.RunAnalysis()
+  Analyze = AJCT_Analysis(nnodes, coord, nele, ends, A, Ayy, Azz, Iyy, Izz, J, E, v, webdir, w);
+  Analyze.RunAnalysis(fixity, nnodes, nele, concen);
 
-DEFL=[]; REACT=[]; ELE_FOR=[];
-AFLAG = inf;
+  [DEFL, REACT, AFLAG, ELE_FOR] = GetMastan2Returns(Analyze)
 
 %% Diagnostic tools: Instructions
 
@@ -289,15 +290,25 @@ disp_error = false;
 
 % % Diagnostic tools: Code
 % 
-% Instantiate an object of the Analysis class
-% analysis = RC_Analysis(nnodes, coord, fixity, concen, nele, ends, A, Ayy, Azz, Iyy, Izz, J, E, v, ...
-%         webdir, w, truss);
+% % Instantiate an object of the Analysis class
+%   analysis = RC_Analysis(nnodes, coord, fixity, concen, nele, ends, A, Ayy, Azz, Iyy, Izz, J, E, v, ...
+%          webdir, w, truss);
+% 
+% % Run the 1st order analysis
+%   analysis.RunAnalysis(disp_elements, disp_element_data, disp_nodes, disp_node_data, disp_global_arrays, ...
+%          disp_error);
+% 
+% %  Extract the matrices to be returned to Mastan2
+%   [DEFL, REACT, ELE_FOR, AFLAG] = analysis.GetMastan2Returns();
+% 
+%  disp('AFLAG:')
+%  disp(AFLAG)
+%  disp('DEFLECTIONS:')
+%  disp(DEFL)
+%  disp('REACTIONS:')
+%  disp(REACT)
+%  disp('ELEMENT FORCES:')
+%  disp(ELE_FOR)
 
-% Run the 1st order analysis
-% analysis.RunAnalysis(disp_elements, disp_element_data, disp_nodes, disp_node_data, disp_global_arrays, ...
-%         disp_error);
-
-% Extract the matrices to be returned to Mastan2
-% [DEFL, REACT, ELE_FOR, AFLAG] = analysis.GetMastan2Returns();
-
+toc
 end

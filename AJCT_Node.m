@@ -1,6 +1,6 @@
 classdef AJCT_Node < handle
 % Node class for a 3-dimensional framed structure
-    
+   
     % Private properties go here
     properties (Access = private)
         node_coord % 1x3 vector containing the x, y, and z coordinates of the node
@@ -10,9 +10,11 @@ classdef AJCT_Node < handle
     % Public methods go here
     methods (Access = public)
         %% Constructor
-        %  node_coord:  1x3 vector containing the x, y, and z coordinates of the node
         function self = AJCT_Node(node_coord, node_num)
+            % Save necessary parameters as properties
             self.node_coord = node_coord;
+
+            % Assign node numbers
             self.assignDOF(node_num);
         end
         
@@ -31,10 +33,11 @@ classdef AJCT_Node < handle
     % Private methods go here
     methods (Access = private)
         %% Assign degrees of freedom for each node
-        % Returns degrees of freedom
         function assignDOF(self,node_num)
-               p = (node_num-1)*6;
-               self.node_dof= (1:6)'+ [p;p;p;p;p;p];
+            % Create 6 DOF's for each node and number them based
+            % on system node number
+            p = (node_num-1)*6;
+            self.node_dof= (1:6)'+ [p;p;p;p;p;p];
         end
     end
 end
